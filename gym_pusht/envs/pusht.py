@@ -223,10 +223,27 @@ class PushTEnv(gym.Env):
                     ),
                 }
             )
+        elif self.obs_type == "pixels_state":
+            self.observation_space = spaces.Dict(
+                {
+                    "pixels": spaces.Box(
+                        low=0,
+                        high=255,
+                        shape=(self.observation_height, self.observation_width, 3),
+                        dtype=np.uint8,
+                    ),
+                    "state": spaces.Box( # [agent_x, agent_y, block_x, block_y, block_angle]
+                        low=np.array([0, 0, 0, 0, 0]),
+                        high=np.array([512, 512, 512, 512, 2 * np.pi]),
+                        dtype=np.float64,
+                    )
+                }
+            )
+
         else:
             raise ValueError(
                 f"Unknown obs_type {self.obs_type}. Must be one of [pixels, state, environment_state_agent_pos, "
-                "pixels_agent_pos]"
+                "pixels_agent_pos, pixels_state]"
             )
 
     def _get_coverage(self):
@@ -379,14 +396,17 @@ class PushTEnv(gym.Env):
             return act
 
         return teleop_agent(act)
+    
+    def get_state_obs(self):
+        agent_position = np.array(self.agent.position)
+        block_position = np.array(self.block.position)
+        block_angle = self.block.angle % (2 * np.pi)
+        return np.concatenate([agent_position, block_position, [block_angle]], dtype=np.float64)
+
 
     def get_obs(self):
         if self.obs_type == "state":
-            agent_position = np.array(self.agent.position)
-            block_position = np.array(self.block.position)
-            block_angle = self.block.angle % (2 * np.pi)
-            return np.concatenate([agent_position, block_position, [block_angle]], dtype=np.float64)
-
+            return self.get_state_obs()
         if self.obs_type == "environment_state_agent_pos":
             return {
                 "environment_state": self.get_keypoints(self._block_shapes).flatten(),
@@ -400,6 +420,11 @@ class PushTEnv(gym.Env):
             return {
                 "pixels": pixels,
                 "agent_pos": np.array(self.agent.position),
+            }
+        elif self.obs_type == "pixels_state":
+            return {
+                "pixels": pixels,
+                "state": self.get_state_obs()
             }
 
     @staticmethod
