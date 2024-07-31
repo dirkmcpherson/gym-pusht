@@ -1,15 +1,43 @@
 import gymnasium as gym
 import gym_pusht
 
-env = gym.make("gym_pusht/PushT-v0", render_mode="human")
-observation, info = env.reset()
+# add a path
+import sys
+sys.path.append("/home/james/workspace/fastrl")
+from nov20.second_wind.peripheral import get_memorymaze_action_from_joystick, get_pusht_action_from_joystick, get_calvin_action_from_joystick, get_pinpad_action_from_joystick, get_ev3_action_from_joystick
 
-for _ in range(1000):
-    action = env.action_space.sample()
+env = gym.make("gym_pusht/PushT-v0", render_mode="human", max_episode_steps=5000)
+observation, info = env.reset()
+import os
+import pygame
+pygame.init()
+pygame.joystick.init()
+joysticks = [pygame.joystick.Joystick(x) for x in range(pygame.joystick.get_count())]
+os.environ['SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS'] = "1"
+import time
+# for _ in range(1000):
+while True:
+    # action = env.action_space.sample()
+    action = get_pusht_action_from_joystick(joysticks)
+    # scale it up from -1, 1 to 0, 255
+    print(action, end=" --> ")
+    action = [(a + 1) * 255 for a in action]
+    print(action)
     observation, reward, terminated, truncated, info = env.step(action)
     image = env.render()
+    time.sleep(0.02)
 
     if terminated or truncated:
         observation, info = env.reset()
+
+    #allow escape to quit
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE or event.key == pygame.K_q:
+                pygame.quit()
+                sys.exit()
 
 env.close()

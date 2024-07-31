@@ -142,8 +142,8 @@ class PushTEnv(gym.Env):
         damping=None,
         observation_width=96,
         observation_height=96,
-        visualization_width=680,
-        visualization_height=680,
+        visualization_width=None,
+        visualization_height=None,
     ):
         super().__init__()
         # Observations
@@ -171,14 +171,14 @@ class PushTEnv(gym.Env):
         # to the window that we draw to. `self.clock` will be a clock that is used
         # to ensure that the environment is rendered at the correct framerate in
         # human-mode. They will remain `None` until human-mode is used for the
-        # first time.
+        # first time.pu
         self.window = None
         self.clock = None
 
         self.teleop = None
         self._last_action = None
 
-        self.success_threshold = 0.95  # 95% coverage
+        self.success_threshold = 0.90  # 95% coverage
 
     def _initialize_observation_space(self):
         if self.obs_type == "state":
