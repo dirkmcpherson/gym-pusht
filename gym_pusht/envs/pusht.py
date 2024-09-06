@@ -144,6 +144,7 @@ class PushTEnv(gym.Env):
         observation_height=96,
         visualization_width=None,
         visualization_height=None,
+        force_sparse=False,
     ):
         super().__init__()
         # Observations
@@ -153,8 +154,8 @@ class PushTEnv(gym.Env):
         self.render_mode = render_mode
         self.observation_width = observation_width
         self.observation_height = observation_height
-        self.visualization_width = visualization_width
-        self.visualization_height = visualization_height
+        self.visualization_width = visualization_width if visualization_width is not None else observation_width
+        self.visualization_height = visualization_height if visualization_height is not None else observation_height
 
         # Initialize spaces
         self._initialize_observation_space()
@@ -179,6 +180,8 @@ class PushTEnv(gym.Env):
         self._last_action = None
 
         self.success_threshold = 0.90  # 95% coverage
+        self.force_sparse = force_sparse
+        print(f"Pusht force sparse reward: ", self.force_sparse)
 
     def _initialize_observation_space(self):
         if self.obs_type == "state":
@@ -273,6 +276,9 @@ class PushTEnv(gym.Env):
         coverage = self._get_coverage()
         reward = np.clip(coverage / self.success_threshold, 0.0, 1.0)
         terminated = is_success = coverage > self.success_threshold
+
+        if self.force_sparse:
+            reward = 1.0 if is_success else 0.0
 
         observation = self.get_obs()
         info = self._get_info()
