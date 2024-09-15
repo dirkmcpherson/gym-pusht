@@ -344,7 +344,7 @@ class PushTEnv(gym.Env):
             action = np.array(self._last_action)
             coord = (action / 512 * [height, width]).astype(np.int32)
             marker_size = int(8 / 96 * render_size)
-            thickness = int(1 / 96 * render_size)
+            thickness = max(1, int(1 / 96 * render_size))
             cv2.drawMarker(
                 img,
                 coord,
