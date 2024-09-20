@@ -277,6 +277,7 @@ class PushTEnv(gym.Env):
         reward = np.clip(coverage / self.success_threshold, 0.0, 1.0)
         terminated = is_success = coverage > self.success_threshold
 
+        info['original_reward'] = reward
         if self.force_sparse:
             reward = 1.0 if is_success else 0.0
 
