@@ -145,6 +145,7 @@ class PushTEnv(gym.Env):
         visualization_width=None,
         visualization_height=None,
         force_sparse=False,
+        display_cross=True, # display the x where the ball is heading 
     ):
         super().__init__()
         # Observations
@@ -181,7 +182,8 @@ class PushTEnv(gym.Env):
 
         self.success_threshold = 0.90  # 95% coverage
         self.force_sparse = force_sparse
-        print(f"Pusht force sparse reward: ", self.force_sparse)
+        self.display_cross = display_cross
+        print(f"Pusht force sparse reward: ", self.force_sparse, " display_cross: ", self.display_cross)
 
     def _initialize_observation_space(self):
         if self.obs_type == "state":
@@ -283,7 +285,7 @@ class PushTEnv(gym.Env):
 
         observation = self.get_obs()
         info = self._get_info()
-        info['original_reward'] = reward
+        info['original_reward'] = original_reward
         info["is_success"] = is_success
         info["coverage"] = coverage
 
@@ -343,18 +345,19 @@ class PushTEnv(gym.Env):
         img = cv2.resize(img, (width, height))
         render_size = min(width, height)
         if render_action and self._last_action is not None:
-            action = np.array(self._last_action)
-            coord = (action / 512 * [height, width]).astype(np.int32)
-            marker_size = int(8 / 96 * render_size)
-            thickness = max(1, int(1 / 96 * render_size))
-            cv2.drawMarker(
-                img,
-                coord,
-                color=(255, 0, 0),
-                markerType=cv2.MARKER_CROSS,
-                markerSize=marker_size,
-                thickness=thickness,
-            )
+            if self.display_cross:
+                action = np.array(self._last_action)
+                coord = (action / 512 * [height, width]).astype(np.int32)
+                marker_size = int(8 / 96 * render_size)
+                thickness = max(1, int(1 / 96 * render_size))
+                cv2.drawMarker(
+                    img,
+                    coord,
+                    color=(255, 0, 0),
+                    markerType=cv2.MARKER_CROSS,
+                    markerSize=marker_size,
+                    thickness=thickness,
+                )
         return img
 
     def render(self):
