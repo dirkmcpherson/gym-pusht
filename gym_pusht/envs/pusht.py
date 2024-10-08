@@ -145,7 +145,7 @@ class PushTEnv(gym.Env):
         visualization_width=None,
         visualization_height=None,
         force_sparse=False,
-        display_cross=True, # display the x where the ball is heading 
+        display_cross=False, # display the x where the ball is heading 
     ):
         super().__init__()
         # Observations
@@ -155,6 +155,7 @@ class PushTEnv(gym.Env):
         self.render_mode = render_mode
         self.observation_width = observation_width
         self.observation_height = observation_height
+        # print(self.observation_height, self.observation_width)
         self.visualization_width = visualization_width if visualization_width is not None else observation_width
         self.visualization_height = visualization_height if visualization_height is not None else observation_height
 
@@ -344,7 +345,7 @@ class PushTEnv(gym.Env):
         img = np.transpose(np.array(pygame.surfarray.pixels3d(screen)), axes=(1, 0, 2))
         img = cv2.resize(img, (width, height))
         render_size = min(width, height)
-        if render_action and self._last_action is not None:
+        if (render_action or self.display_cross) and self._last_action is not None:
             if self.display_cross:
                 action = np.array(self._last_action)
                 coord = (action / 512 * [height, width]).astype(np.int32)
