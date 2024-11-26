@@ -146,6 +146,7 @@ class PushTEnv(gym.Env):
         visualization_height=None,
         force_sparse=False,
         display_cross=False, # display the x where the ball is heading 
+        success_threshold=0.95,
     ):
         super().__init__()
         # Observations
@@ -181,7 +182,7 @@ class PushTEnv(gym.Env):
         self.teleop = None
         self._last_action = None
 
-        self.success_threshold = 0.90  # 95% coverage
+        self.success_threshold = success_threshold #0.90  # 95% coverage
         self.force_sparse = force_sparse
         self.display_cross = display_cross
         print(f"Pusht force sparse reward: ", self.force_sparse, " display_cross: ", self.display_cross)
