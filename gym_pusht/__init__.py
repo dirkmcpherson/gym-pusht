@@ -5,6 +5,6 @@ register(
     entry_point="gym_pusht.envs:PushTEnv",
     max_episode_steps=300,
     kwargs={"obs_type": "state",
-            "observation_width": 64,
-            "observation_height": 64},
+            "observation_width": 96,
+            "observation_height": 96},
 )

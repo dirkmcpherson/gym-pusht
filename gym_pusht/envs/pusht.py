@@ -262,6 +262,7 @@ class PushTEnv(gym.Env):
         return intersection_area / goal_area
 
     def step(self, action):
+        # print(action)
         self.n_contact_points = 0
         n_steps = int(1 / (self.dt * self.control_hz))
         self._last_action = action
@@ -318,6 +319,8 @@ class PushTEnv(gym.Env):
         observation = self.get_obs()
         info = self._get_info()
         info["is_success"] = False
+        coverage = self._get_coverage()
+        info["coverage"] = coverage
 
         if self.render_mode == "human":
             self.render()
@@ -389,6 +392,7 @@ class PushTEnv(gym.Env):
             pygame.event.pump()
             self.clock.tick(self.metadata["render_fps"] * int(1 / (self.dt * self.control_hz)))
             pygame.display.update()
+            return self._get_img(screen, width=width, height=height, render_action=visualize)
         else:
             raise ValueError(self.render_mode)
 
