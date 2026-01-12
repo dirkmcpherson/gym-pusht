@@ -147,6 +147,7 @@ class PushTEnv(gym.Env):
         force_sparse=False,
         display_cross=False, # display the x where the ball is heading 
         success_threshold=0.95,
+        differential_action=False,
     ):
         super().__init__()
         # Observations
@@ -162,7 +163,12 @@ class PushTEnv(gym.Env):
 
         # Initialize spaces
         self._initialize_observation_space()
-        self.action_space = spaces.Box(low=0, high=512, shape=(2,), dtype=np.float32)
+
+        self.differential_action = differential_action
+        if self.differential_action:
+            self.action_space = spaces.Box(low=-100, high=100, shape=(2,), dtype=np.float32)
+        else:
+            self.action_space = spaces.Box(low=0, high=512, shape=(2,), dtype=np.float32)
 
         # Physics
         self.k_p, self.k_v = 100, 20  # PD control.z
@@ -181,6 +187,7 @@ class PushTEnv(gym.Env):
 
         self.teleop = None
         self._last_action = None
+        self.d = None # for differential position control
 
         self.success_threshold = success_threshold #0.90  # 95% coverage
         self.force_sparse = force_sparse
@@ -262,6 +269,10 @@ class PushTEnv(gym.Env):
         return intersection_area / goal_area
 
     def step(self, action):
+        if self.differential_action:
+            action = self.agent.position + action
+            action = np.clip(action, 0, 512)
+
         # print(action)
         self.n_contact_points = 0
         n_steps = int(1 / (self.dt * self.control_hz))
@@ -496,6 +507,8 @@ class PushTEnv(gym.Env):
         self.collision_handeler = self.space.add_collision_handler(0, 0)
         self.collision_handeler.post_solve = self._handle_collision
         self.n_contact_points = 0
+
+        self.d = np.array(self.agent.position)
 
     def _set_state(self, state):
         self.agent.position = list(state[:2])
