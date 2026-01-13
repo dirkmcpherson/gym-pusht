@@ -148,10 +148,13 @@ class PushTEnv(gym.Env):
         display_cross=False, # display the x where the ball is heading 
         success_threshold=0.95,
         differential_action=False,
+        pixels_based_success=False,
     ):
         super().__init__()
         # Observations
         self.obs_type = obs_type
+        self.pixels_based_success = pixels_based_success
+        self._max_green_pixels = None
 
         # Rendering
         self.render_mode = render_mode
@@ -260,7 +263,48 @@ class PushTEnv(gym.Env):
                 "pixels_agent_pos, pixels_state]"
             )
 
+    def _get_pixel_coverage(self):
+        GOAL_COLOR = np.array([144, 238, 144])
+        TOLERANCE = 30.0
+
+        if self._max_green_pixels is None:
+            # Calculate max possible green pixels
+            # Render with only goal visible
+            # Note: We use visualization_width/height for high res coverage, or observation_width?
+            # User request: "care about the number of green pixels showing at the target rendering resoultion"
+            # Assuming "target rendering resolution" means "observation resolution" unless visualize is used.
+            # But coverage is used for reward, which happens every step.
+            # Usually observations are small (96x96).
+            pixels = self._render(visualize=False, draw_agent=False, draw_block=False)
+            
+            # Count green pixels
+            # Using Euclidean distance in RGB space
+            diff = np.linalg.norm(pixels.astype(float) - GOAL_COLOR, axis=-1)
+            self._max_green_pixels = np.sum(diff < TOLERANCE)
+            
+            if self._max_green_pixels == 0:
+                 # Should not happen unless goal is off screen or invisible
+                 self._max_green_pixels = 1.0 # Avoid division by zero
+                 
+        # Calculate current green pixels
+        pixels = self._render(visualize=False, draw_agent=True, draw_block=True)
+        diff = np.linalg.norm(pixels.astype(float) - GOAL_COLOR, axis=-1)
+        current_green_pixels = np.sum(diff < TOLERANCE)
+        
+        # Coverage is the proportion of goal pixels that are NOT visible (covered by block)
+        # Wait, "number of green pixels showing".
+        # If block covers goal, fewer green pixels show.
+        # So "coverage" (success metric) is usually "how much of goal is covered".
+        # If 100% covered, 0 green pixels show.
+        # So coverage = 1.0 - (current / max)
+        
+        coverage = 1.0 - (current_green_pixels / self._max_green_pixels)
+        return coverage
+
     def _get_coverage(self):
+        if self.pixels_based_success:
+            return self._get_pixel_coverage()
+            
         goal_body = self.get_goal_pose_body(self.goal_pose)
         goal_geom = pymunk_to_shapely(goal_body, self.block.shapes)
         block_geom = pymunk_to_shapely(self.block, self.block.shapes)
@@ -338,7 +382,7 @@ class PushTEnv(gym.Env):
 
         return observation, info
 
-    def _draw(self):
+    def _draw(self, draw_agent=True, draw_block=True):
         # Create a screen
         screen = pygame.Surface((512, 512))
         screen.fill((255, 255, 255))
@@ -353,13 +397,16 @@ class PushTEnv(gym.Env):
             pygame.draw.polygon(screen, pygame.Color("LightGreen"), goal_points)
 
         # Draw agent and block
-        self.space.debug_draw(draw_options)
+        if draw_block or draw_agent:
+             self.space.debug_draw(draw_options)
+             
         return screen
 
     def _get_img(self, screen, width, height, render_action=False):
         img = np.transpose(np.array(pygame.surfarray.pixels3d(screen)), axes=(1, 0, 2))
         img = cv2.resize(img, (width, height))
         render_size = min(width, height)
+        
         if (render_action or self.display_cross) and self._last_action is not None:
             if self.display_cross:
                 action = np.array(self._last_action)
@@ -379,16 +426,16 @@ class PushTEnv(gym.Env):
     def render(self):
         return self._render(visualize=True)
 
-    def _render(self, visualize=False):
+    def _render(self, visualize=False, draw_agent=True, draw_block=True):
         width, height = (
             (self.visualization_width, self.visualization_height)
             if visualize
             else (self.observation_width, self.observation_height)
         )
-        screen = self._draw()  # draw the environment on a screen
+        screen = self._draw(draw_agent=draw_agent, draw_block=draw_block)  # draw the environment on a screen
 
         if self.render_mode == "rgb_array":
-            return self._get_img(screen, width=width, height=height, render_action=visualize)
+            return self._get_img(screen, width=width, height=height, render_action=visualize and draw_agent)
         elif self.render_mode == "human":
             if self.window is None:
                 pygame.init()
@@ -403,7 +450,7 @@ class PushTEnv(gym.Env):
             pygame.event.pump()
             self.clock.tick(self.metadata["render_fps"] * int(1 / (self.dt * self.control_hz)))
             pygame.display.update()
-            return self._get_img(screen, width=width, height=height, render_action=visualize)
+            return self._get_img(screen, width=width, height=height, render_action=visualize and draw_agent)
         else:
             raise ValueError(self.render_mode)
 
