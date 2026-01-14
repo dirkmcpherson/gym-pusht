@@ -265,7 +265,7 @@ class PushTEnv(gym.Env):
 
     def _get_pixel_coverage(self):
         GOAL_COLOR = np.array([144, 238, 144])
-        TOLERANCE = 30.0
+        TOLERANCE = 50.0
 
         if self._max_green_pixels is None:
             # Calculate max possible green pixels
