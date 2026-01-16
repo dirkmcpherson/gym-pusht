@@ -112,8 +112,9 @@ def save_episodes(directory, episodes):
     directory.mkdir(parents=True, exist_ok=True)
     for ep_id, episode_data in episodes.items():
         np_data = {k: np.array(v) for k, v in episode_data.items()}
-        print(f"Saving {ep_id} to {directory} ({len(np_data['reward'])} steps)")
-        np.savez_compressed(directory / f"{ep_id}.npz", **np_data)
+        num_steps = len(np_data['reward'])
+        print(f"Saving {ep_id} to {directory} ({num_steps} steps)")
+        np.savez_compressed(directory / f"{ep_id}-{num_steps}.npz", **np_data)
 
 # --- 3. Replay Logic ---
 
