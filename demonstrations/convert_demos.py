@@ -9,20 +9,19 @@ import copy
 
 # --- 1. The Wrapper (As provided) ---
 class PushT(gym.Env):
-    def __init__(self, size=(64,64), obs_type="pixels_agent_pos", render_mode="rgb_array", force_sparse=False, max_steps=1000, action_repeat=1, env_kwargs={}):
+    def __init__(self, size=(64,64), obs_type="pixels_agent_pos", render_mode="rgb_array", force_sparse=False, max_steps=1000, action_repeat=1, use_differential_action=False, env_kwargs={}):
         w,h = size
-        self._env = gym.make("gym_pusht/PushT-v0", obs_type=obs_type, render_mode=render_mode, observation_width=w, observation_height=h, force_sparse=force_sparse, display_cross=False, **env_kwargs)
+        self._env = gym.make("gym_pusht/PushT-v0", obs_type=obs_type, render_mode=render_mode, observation_width=w, observation_height=h, force_sparse=force_sparse, display_cross=False, differential_action=use_differential_action, **env_kwargs)
         self._obs_is_dict = hasattr(self._env.observation_space, "spaces")
         self._obs_key = "image"
         self.force_sparse = force_sparse
         self.max_steps = max_steps; self.nstep = 0
         self.action_repeat = action_repeat
 
-    def __getattr__(self, name):
-        if name.startswith("__"): raise AttributeError(name)
-        try: return getattr(self._env, name)
-        except AttributeError: raise ValueError(name)
-        
+    @property
+    def differential_action(self):
+        return self._env.unwrapped.differential_action
+
     def step(self, action):
         for _ in range(self.action_repeat):
             obs, reward, done, truncated, info = self._env.step(action)
@@ -172,9 +171,18 @@ def replay_demo_with_cache(env, episode_data, cache, ep_id):
     # --- EXECUTE ACTIONS ---
     # We have N actions. We will have N+1 observations total (0 to N).
     
+    last_target = current_agent_pos
     for i, action in enumerate(actions):
+        if env.differential_action:
+            # Calculate delta from previous target
+            delta_action = action - last_target
+            last_target = action
+            step_action = delta_action
+        else:
+            step_action = action
+
         # Step env
-        next_obs, reward, done, info = env.step(action)
+        next_obs, reward, done, info = env.step(step_action)
         
         transition = {k: convert(v) for k, v in next_obs.items()}
         
@@ -221,7 +229,6 @@ def load_pusht_demos(zarr_path):
 
 if __name__ == "__main__":
     ZARR_PATH = pathlib.Path(__file__).parent / "pusht/pusht_cchi_v7_replay.zarr"
-    SAVE_DIR = pathlib.Path(__file__).parent / "training_dataset_v3"
     
     print(f"Loading demos from {ZARR_PATH}")
     demos = load_pusht_demos(ZARR_PATH)
@@ -242,15 +249,23 @@ if __name__ == "__main__":
     # I will modify the script to use (96,96) because typically we want high res, 
     # but resize if needed. Actually, let's just use 96x96. 
     # Wait, I set default 96x96 in the script above.
+
+    use_differential_action = True
+    SAVE_DIR = pathlib.Path(__file__).parent / "training_dataset_v3_differential" if use_differential_action else pathlib.Path(__file__).parent / "training_dataset_v3"
     
-    env = PushT(size=(64,64), max_steps=500, render_mode="rgb_array", env_kwargs={"pixels_based_success": True}) 
+    env = PushT(size=(64,64), max_steps=500, use_differential_action=use_differential_action, render_mode="rgb_array", env_kwargs={"pixels_based_success": True}) 
 
     cache = collections.OrderedDict()
 
     print(f"Starting collection into {SAVE_DIR}...")
 
-    # Process all demos
-    for i in range(len(demos)):
+    # Process a subset of demos for evaluation
+    num_to_eval = 206
+    success_count = 0
+    pix_success_count = 0
+    
+    failed_episodes = []
+    for i in range(min(num_to_eval, len(demos))):
         ep_id = f"episode_{i:06d}"
         # print(f"Processing {ep_id}...")
         
@@ -262,6 +277,15 @@ if __name__ == "__main__":
                 ep_id
             )
             # print(f"  Cov: {cov:.2f}, PixCov: {pix_cov:.2f}")
+            is_success = cov > env._env.unwrapped.success_threshold
+            if is_success:
+                success_count += 1
+            else:
+                failed_episodes.append((ep_id, cov))
+
+            if pix_cov > env._env.unwrapped.success_threshold:
+                pix_success_count += 1
+                
             save_episodes(SAVE_DIR, {ep_id: cache[ep_id]})
             del cache[ep_id]
         except Exception as e:
@@ -269,4 +293,10 @@ if __name__ == "__main__":
             # import traceback
             # traceback.print_exc()
 
-    print("Done.")
+    print(f"Evaluation complete for {num_to_eval} episodes.")
+    print(f"Success Rate (Geometric): {success_count / num_to_eval * 100:.2f}%")
+    print(f"Success Rate (Pixel): {pix_success_count / num_to_eval * 100:.2f}%")
+    if failed_episodes:
+        print("Failed Episodes (ID, Max Coverage):")
+        for fid, fcov in failed_episodes:
+            print(f"  {fid}: {fcov:.3f}")

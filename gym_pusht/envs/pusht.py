@@ -303,6 +303,7 @@ class PushTEnv(gym.Env):
 
     def _get_coverage(self):
         if self.pixels_based_success:
+            # print("Using pixels based success/coverage.")
             return self._get_pixel_coverage()
             
         goal_body = self.get_goal_pose_body(self.goal_pose)
@@ -314,24 +315,27 @@ class PushTEnv(gym.Env):
 
     def step(self, action):
         if self.differential_action:
-            action = self.agent.position + action
-            action = np.clip(action, 0, 512)
+            # action is the delta command (A_t = P_t+1 - P_t)
+            delta = action
+            # Do NOT clip self.d every step, as it causes cumulative drift
+            self.d = self.d + delta 
+            self._last_action = np.clip(self.d, 0, 512)
+            # Factor 1.2 gave good results in previous exploratory tests.
+            target = self.d + 1.2 * delta
+        else:
+            self._last_action = action
+            target = action
 
-        # print(action)
         self.n_contact_points = 0
         n_steps = int(1 / (self.dt * self.control_hz))
-        self._last_action = action
-        for _ in range(n_steps):
-            # Step PD control
-            # self.agent.velocity = self.k_p * (act - self.agent.position)    # P control works too.
-            acceleration = self.k_p * (action - self.agent.position) + self.k_v * (
+        
+        for i in range(n_steps):
+            acceleration = self.k_p * (target - self.agent.position) + self.k_v * (
                 Vec2d(0, 0) - self.agent.velocity
             )
             self.agent.velocity += acceleration * self.dt
-
-            # Step physics
             self.space.step(self.dt)
-
+        
         # Compute reward
         coverage = self._get_coverage()
         reward = np.clip(coverage / self.success_threshold, 0.0, 1.0)
@@ -559,6 +563,7 @@ class PushTEnv(gym.Env):
 
     def _set_state(self, state):
         self.agent.position = list(state[:2])
+        self.d = np.array(self.agent.position)
         # Setting angle rotates with respect to center of mass, therefore will modify the geometric position if not
         # the same as CoM. Therefore should theoretically set the angle first. But for compatibility with legacy data,
         # we do the opposite.
