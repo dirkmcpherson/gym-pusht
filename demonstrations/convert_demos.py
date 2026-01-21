@@ -6,6 +6,7 @@ import pathlib
 import zarr
 import cv2
 import copy
+import argparse
 
 # --- 1. The Wrapper (As provided) ---
 class PushT(gym.Env):
@@ -17,6 +18,7 @@ class PushT(gym.Env):
         self.force_sparse = force_sparse
         self.max_steps = max_steps; self.nstep = 0
         self.action_repeat = action_repeat
+        self.action_space = self._env.action_space
 
     @property
     def differential_action(self):
@@ -117,7 +119,13 @@ def save_episodes(directory, episodes):
 
 # --- 3. Replay Logic ---
 
-def replay_demo_with_cache(env, episode_data, cache, ep_id):
+def normalize_action(action, action_space):
+    """Normalize action to [-1, 1] based on action_space bounds."""
+    low = action_space.low
+    high = action_space.high
+    return 2.0 * (action - low) / (high - low) - 1.0
+
+def replay_demo_with_cache(env, episode_data, cache, ep_id, normalize=False):
     initial_state = episode_data['state'][0]
     
     # Reset Wrapper (gets is_first=True)
@@ -164,20 +172,31 @@ def replay_demo_with_cache(env, episode_data, cache, ep_id):
     actions = episode_data['action']
     
     # Store Step 0 (observation)
-    # We need to include 'action' for this step.
-    t["action"] = convert(actions[0]) # Action to be taken
+    last_target = current_agent_pos
+    if env.differential_action:
+        # First delta is action[0] - initial_agent_pos
+        first_step_action = actions[0] - last_target
+    else:
+        first_step_action = actions[0]
+
+    if normalize:
+        saved_action = normalize_action(first_step_action, env.action_space)
+    else:
+        saved_action = first_step_action
+
+    t["action"] = convert(saved_action) 
     add_to_cache(cache, ep_id, t)
 
     # --- EXECUTE ACTIONS ---
     # We have N actions. We will have N+1 observations total (0 to N).
     
-    last_target = current_agent_pos
+    # last_target is already current_agent_pos
     for i, action in enumerate(actions):
         if env.differential_action:
-            # Calculate delta from previous target
-            delta_action = action - last_target
+            # step_action is the delta to reach the target 'action'
+            step_action = action - last_target
+            # last_target moves to the target just reached
             last_target = action
-            step_action = delta_action
         else:
             step_action = action
 
@@ -186,13 +205,20 @@ def replay_demo_with_cache(env, episode_data, cache, ep_id):
         
         transition = {k: convert(v) for k, v in next_obs.items()}
         
-        # Action for this new step?
-        # If this is the last step (done), action might differ or be zero.
-        # If there are N actions, we produce N transitions.
-        # The last observation (terminal) needs an action field too for consistency.
-        
         if i < len(actions) - 1:
-            transition["action"] = convert(actions[i+1])
+            # Action for the NEXT step (the transition from obs[i+1] to obs[i+2])
+            next_target = actions[i+1]
+            if env.differential_action:
+                step_next_action = next_target - last_target
+            else:
+                step_next_action = next_target
+            
+            if normalize:
+                saved_next_action = normalize_action(step_next_action, env.action_space)
+            else:
+                saved_next_action = step_next_action
+
+            transition["action"] = convert(saved_next_action)
         else:
             # End of demo. Pad with zero action.
             transition["action"] = convert(np.zeros_like(action))
@@ -228,55 +254,54 @@ def load_pusht_demos(zarr_path):
     return episodes
 
 if __name__ == "__main__":
-    ZARR_PATH = pathlib.Path(__file__).parent / "pusht/pusht_cchi_v7_replay.zarr"
-    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--zarr_path", type=str, default=str(pathlib.Path(__file__).parent / "pusht/pusht_cchi_v7_replay.zarr"))
+    parser.add_argument("--save_dir", type=str, default=None)
+    parser.add_argument("--num_episodes", type=int, default=206)
+    parser.add_argument("--resolution", type=int, default=64)
+    parser.add_argument("--use_differential", action="store_true", default=True)
+    parser.add_argument("--normalize_actions", action="store_true", help="Normalize actions to [-1, 1] based on env action space")
+    args = parser.parse_args()
+
+    ZARR_PATH = pathlib.Path(args.zarr_path)
     print(f"Loading demos from {ZARR_PATH}")
     demos = load_pusht_demos(ZARR_PATH)
     
-    # NOTE: User provided wrapper default size (64,64) but Zarr usually 96x96.
-    # Pusht-v0 defaults to 96x96.
-    # User's provided wrapper code in prompt had size=(64,64) in __init__.
-    # But later prompt code: env = PushT(max_steps=300) without size -> defaults to 64x64.
-    # Demos are usually at 96x96. If we render at 64x64, it's fine.
+    use_differential_action = args.use_differential
     
-    # Let's use 96x96 to match typical PushT defaults unless strictly requested 64.
-    # User's prompt code: class PushT(gym.Env): def __init__(self, size=(64,64)...
-    # I changed it to 96x96 in my pasted code above to be safe, or should I stick to 64?
-    # Dreamer usually likes 64x64.
-    # I'll stick to 96x96 for higher quality, or make it configurable. 
-    # Let's check what the user wants. "same data as the following gym-pusht wrapper".
-    # The wrapper has default (64,64).
-    # I will modify the script to use (96,96) because typically we want high res, 
-    # but resize if needed. Actually, let's just use 96x96. 
-    # Wait, I set default 96x96 in the script above.
-
-    use_differential_action = True
-    SAVE_DIR = pathlib.Path(__file__).parent / "training_dataset_v3_differential" if use_differential_action else pathlib.Path(__file__).parent / "training_dataset_v3"
+    if args.save_dir:
+        SAVE_DIR = pathlib.Path(args.save_dir)
+    else:
+        name = "training_dataset_v3"
+        if use_differential_action: 
+            name += "_differential"
+        if args.normalize_actions:
+            name += "_normalized"
+        SAVE_DIR = pathlib.Path(__file__).parent / name
     
-    env = PushT(size=(64,64), max_steps=500, use_differential_action=use_differential_action, render_mode="rgb_array", env_kwargs={"pixels_based_success": True}) 
+    env = PushT(size=(args.resolution, args.resolution), max_steps=500, use_differential_action=use_differential_action, render_mode="rgb_array", env_kwargs={"pixels_based_success": True}) 
 
     cache = collections.OrderedDict()
 
-    print(f"Starting collection into {SAVE_DIR}...")
+    print(f"Starting collection into {SAVE_DIR} (normalize={args.normalize_actions})...")
 
-    # Process a subset of demos for evaluation
-    num_to_eval = 206
+    # Process demos for evaluation
+    num_to_eval = min(args.num_episodes, len(demos))
     success_count = 0
     pix_success_count = 0
     
     failed_episodes = []
-    for i in range(min(num_to_eval, len(demos))):
+    for i in range(num_to_eval):
         ep_id = f"episode_{i:06d}"
-        # print(f"Processing {ep_id}...")
         
         try:
             cov, pix_cov = replay_demo_with_cache(
                 env, 
                 copy.deepcopy(demos[i]), 
                 cache, 
-                ep_id
+                ep_id,
+                normalize=args.normalize_actions
             )
-            # print(f"  Cov: {cov:.2f}, PixCov: {pix_cov:.2f}")
             is_success = cov > env._env.unwrapped.success_threshold
             if is_success:
                 success_count += 1
@@ -290,8 +315,6 @@ if __name__ == "__main__":
             del cache[ep_id]
         except Exception as e:
             print(f"Failed on {ep_id}: {e}")
-            # import traceback
-            # traceback.print_exc()
 
     print(f"Evaluation complete for {num_to_eval} episodes.")
     print(f"Success Rate (Geometric): {success_count / num_to_eval * 100:.2f}%")
