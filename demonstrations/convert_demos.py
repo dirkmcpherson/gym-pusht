@@ -53,7 +53,7 @@ class PushT(gym.Env):
 
         obs["is_first"] = False
         obs["is_last"] = done
-        obs["is_terminal"] = info.get("is_terminal", False)
+        obs["is_terminal"] = info.get("is_terminal", done)
 
         self.nstep += 1
         return obs, reward, done, info
