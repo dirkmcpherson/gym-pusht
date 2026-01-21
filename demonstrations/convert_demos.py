@@ -8,6 +8,8 @@ import cv2
 import copy
 import argparse
 
+PUSHT_STATIC_SUCCESS_REWARD = 300 # corresponds to max_steps=300
+
 # --- 1. The Wrapper (As provided) ---
 class PushT(gym.Env):
     def __init__(self, size=(64,64), obs_type="pixels_agent_pos", render_mode="rgb_array", force_sparse=False, max_steps=1000, action_repeat=1, use_differential_action=False, env_kwargs={}):
@@ -43,7 +45,7 @@ class PushT(gym.Env):
         info['coverage'] = np.array(info.get('coverage', 0.0))
 
         if info["is_success"]:
-            reward = 2 * self.max_steps
+            reward = PUSHT_STATIC_SUCCESS_REWARD
             # print("Success!")
 
         if self.force_sparse:
