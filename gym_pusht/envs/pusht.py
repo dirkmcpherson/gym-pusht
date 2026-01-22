@@ -169,7 +169,7 @@ class PushTEnv(gym.Env):
 
         self.differential_action = differential_action
         if self.differential_action:
-            self.action_space = spaces.Box(low=-100, high=100, shape=(2,), dtype=np.float32)
+            self.action_space = spaces.Box(low=-25, high=25, shape=(2,), dtype=np.float32)
         else:
             self.action_space = spaces.Box(low=0, high=512, shape=(2,), dtype=np.float32)
 
