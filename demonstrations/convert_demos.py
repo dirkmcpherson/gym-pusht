@@ -261,7 +261,7 @@ if __name__ == "__main__":
     parser.add_argument("--save_dir", type=str, default=None)
     parser.add_argument("--num_episodes", type=int, default=206)
     parser.add_argument("--resolution", type=int, default=64)
-    parser.add_argument("--use_differential", action="store_true", default=True)
+    parser.add_argument("--use_differential", action="store_true", default=False)
     parser.add_argument("--normalize_actions", action="store_true", help="Normalize actions to [-1, 1] based on env action space")
     args = parser.parse_args()
 

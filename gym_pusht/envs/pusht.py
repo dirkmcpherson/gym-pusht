@@ -287,7 +287,7 @@ class PushTEnv(gym.Env):
                  self._max_green_pixels = 1.0 # Avoid division by zero
                  
         # Calculate current green pixels
-        pixels = self._render(visualize=False, draw_agent=True, draw_block=True)
+        pixels = self._render(visualize=False, draw_agent=False, draw_block=True) # don't draw agent to avoid occlusion
         diff = np.linalg.norm(pixels.astype(float) - GOAL_COLOR, axis=-1)
         current_green_pixels = np.sum(diff < TOLERANCE)
         
